@@ -1,0 +1,7 @@
+{
+    "name": "tabman",
+    "description": "tabman host",
+    "path": "/home/nc/projects/tabman/app/tabman.py",
+    "type": "stdio",
+    "allowed_extensions": ["tabman@example.com"]
+}
