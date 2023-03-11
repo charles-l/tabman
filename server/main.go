@@ -3,9 +3,9 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"html"
 	"log"
 	"net/http"
-	"os"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -14,39 +14,68 @@ type TabsServer struct {
 	db *sql.DB
 }
 
+type Tabs struct {
+	ClientId string      `json:"client_id"`
+	Tabs     [][3]string `json:"tabs"`
+}
+
 func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatal(err)
-	}
 	if r.Method == http.MethodPost {
-		var tabs [][2]string
+		var tabs Tabs
 		err := json.NewDecoder(r.Body).Decode(&tabs)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		j, err := json.Marshal(tabs)
+		if tabs.Tabs == nil {
+			http.Error(w, "tabs cannot be null", http.StatusBadRequest)
+			return
+		}
+
+		for i, t := range tabs.Tabs {
+			tabs.Tabs[i] = [3]string{html.EscapeString(t[0]), html.EscapeString(t[1]), html.EscapeString(t[2])}
+		}
+
+		j, err := json.Marshal(tabs.Tabs)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		if _, err = server.db.Exec(
 			`INSERT OR REPLACE INTO tabs (client_id, tabs) values (?, ?)`,
-			hostname,
+			tabs.ClientId,
 			j,
 		); err != nil {
 			log.Fatal(err)
 		}
 	} else if r.Method == http.MethodGet {
-		row := server.db.QueryRow(`SELECT tabs FROM tabs WHERE client_id = ?`, hostname)
-		var tabsStr string
-		if err = row.Scan(&tabsStr); err == sql.ErrNoRows {
-			w.Write([]byte("no rows"))
-			return
+		rows, err := server.db.Query(`SELECT client_id, tabs FROM tabs`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+
+		var allTabs []Tabs
+		for rows.Next() {
+			var clientId string
+			var tabsStr string
+			if err := rows.Scan(&clientId, &tabsStr); err == sql.ErrNoRows {
+				// FIXME: set status code
+				w.Write([]byte(`{"error": "no rows"}`))
+				return
+			}
+
+			var tabsArr [][3]string
+			err := json.Unmarshal([]byte(tabsStr), &tabsArr)
+			if err != nil {
+				log.Fatal(err)
+			}
+			allTabs = append(allTabs, Tabs{clientId, tabsArr})
 		}
 
-		w.Write([]byte(tabsStr))
+		j, err := json.Marshal(allTabs)
+
+		w.Write([]byte(j))
 	}
 }
 
