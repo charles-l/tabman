@@ -6,7 +6,6 @@ import (
 	"html"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -58,47 +57,76 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if r.Method == http.MethodGet {
-		rows, err := server.db.Query(`SELECT client_id, tabs FROM tabs`)
-		if err != nil {
-			log.Printf("Failed to query tabs table: %v", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		var allTabs []Tabs
-		for rows.Next() {
-			var clientId string
-			var tabsStr string
-			if err := rows.Scan(&clientId, &tabsStr); err != nil {
-				log.Printf("failed to scan rows: %v", err)
-				http.Error(w, "Internal error", http.StatusInternalServerError)
-				return
-			}
-
-			var tabsArr [][3]string
-			err := json.Unmarshal([]byte(tabsStr), &tabsArr)
+		if r.URL.Query().Has("deleted") {
+			// deleted sessions
+			rows, err := server.db.Query(`SELECT id, client_id FROM tabs_deleted`)
 			if err != nil {
-				// This means we stored bad data, which shouldn't happen.
-				log.Printf("BADNESS: failed to unmarshal rows stored in DB: %v", err)
+				log.Printf("Failed to query tabs_deleted table: %v", err)
 				http.Error(w, "Internal error", http.StatusInternalServerError)
 				return
 			}
-			allTabs = append(allTabs, Tabs{clientId, tabsArr})
+			defer rows.Close()
+			var out []map[string]any
+			for rows.Next() {
+				var id int
+				var client_id string
+				rows.Scan(&id, &client_id)
+				out = append(out, map[string]any{
+					"id":        id,
+					"client_id": client_id,
+				})
+			}
+
+			j, err := json.Marshal(out)
+
+			w.Write([]byte(j))
+		} else {
+			// active sessions
+			rows, err := server.db.Query(`SELECT client_id, tabs FROM tabs`)
+			if err != nil {
+				log.Printf("Failed to query tabs table: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			defer rows.Close()
+
+			var allTabs []Tabs = []Tabs{}
+			for rows.Next() {
+				var clientId string
+				var tabsStr string
+				if err := rows.Scan(&clientId, &tabsStr); err != nil {
+					log.Printf("failed to scan rows: %v", err)
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+
+				var tabsArr [][3]string
+				err := json.Unmarshal([]byte(tabsStr), &tabsArr)
+				if err != nil {
+					// This means we stored bad data, which shouldn't happen.
+					log.Printf("BADNESS: failed to unmarshal rows stored in DB: %v", err)
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				allTabs = append(allTabs, Tabs{clientId, tabsArr})
+			}
+
+			j, err := json.Marshal(allTabs)
+
+			w.Write([]byte(j))
 		}
-
-		j, err := json.Marshal(allTabs)
-
-		w.Write([]byte(j))
 	} else if r.Method == http.MethodDelete {
-		url, err := url.ParseRequestURI(r.RequestURI)
-		if err != nil {
-			log.Printf("Failed to parse '%v': %v", r.RequestURI, err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-		id := strings.TrimPrefix(url.RequestURI(), "/tabs/")
-		{ // move to the tabs_deleted table
+		id := strings.TrimPrefix(r.URL.EscapedPath(), "/tabs/")
+		log.Printf("attempting to delete '%v'", id)
+		if r.URL.Query().Has("deleted") {
+			// delete from tabs_deleted table
+			if _, err := server.db.Exec("DELETE from tabs_deleted WHERE id = ?", id); err != nil {
+				log.Printf("Error when attempting to delete session: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			// move to the tabs_deleted table
 			tx, err := server.db.Begin()
 			if err != nil {
 				log.Printf("Failed to create tx: %v", err)
@@ -163,7 +191,6 @@ func main() {
 	server := TabsServer{db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tabs/", server.tabsHandler)
-	mux.HandleFunc("/b/", byeHandler)
 	log.Print("Starting TabMan server")
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
