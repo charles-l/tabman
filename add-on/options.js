@@ -1,5 +1,5 @@
 function saveOptions() {
-    var serverInput = document.querySelector('#server');
+    const serverInput = document.querySelector('#server');
     browser.storage.local.set({
         server: serverInput.value
     })

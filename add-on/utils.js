@@ -24,6 +24,7 @@ if(typeof globalThis.browser === "undefined" || Object.getPrototypeOf(globalThis
     }
 }
 
+// deno-lint-ignore no-unused-vars
 function getServer() {
     return browser.storage.local.get('server').then(x => x.server)
 }
