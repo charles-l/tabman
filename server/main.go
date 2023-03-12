@@ -6,6 +6,9 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -24,7 +27,8 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 		var tabs Tabs
 		err := json.NewDecoder(r.Body).Decode(&tabs)
 		if err != nil {
-			log.Fatal(err)
+			http.Error(w, "Invalid JSON in request", http.StatusBadRequest)
+			return
 		}
 
 		if tabs.Tabs == nil {
@@ -38,20 +42,27 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 
 		j, err := json.Marshal(tabs.Tabs)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Failed to marshal tabs object: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
 
 		if _, err = server.db.Exec(
-			`INSERT OR REPLACE INTO tabs (client_id, tabs) values (?, ?)`,
+			`INSERT OR REPLACE INTO tabs (client_id, tabs, last_updated) values (?, ?, ?)`,
 			tabs.ClientId,
 			j,
+			time.Now(),
 		); err != nil {
-			log.Fatal(err)
+			log.Printf("Failed to insert into tabs: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
 	} else if r.Method == http.MethodGet {
 		rows, err := server.db.Query(`SELECT client_id, tabs FROM tabs`)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Failed to query tabs table: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
 		defer rows.Close()
 
@@ -59,16 +70,19 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var clientId string
 			var tabsStr string
-			if err := rows.Scan(&clientId, &tabsStr); err == sql.ErrNoRows {
-				// FIXME: set status code
-				w.Write([]byte(`{"error": "no rows"}`))
+			if err := rows.Scan(&clientId, &tabsStr); err != nil {
+				log.Printf("failed to scan rows: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
 				return
 			}
 
 			var tabsArr [][3]string
 			err := json.Unmarshal([]byte(tabsStr), &tabsArr)
 			if err != nil {
-				log.Fatal(err)
+				// This means we stored bad data, which shouldn't happen.
+				log.Printf("BADNESS: failed to unmarshal rows stored in DB: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
 			}
 			allTabs = append(allTabs, Tabs{clientId, tabsArr})
 		}
@@ -76,6 +90,46 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 		j, err := json.Marshal(allTabs)
 
 		w.Write([]byte(j))
+	} else if r.Method == http.MethodDelete {
+		url, err := url.ParseRequestURI(r.RequestURI)
+		if err != nil {
+			log.Printf("Failed to parse '%v': %v", r.RequestURI, err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		id := strings.TrimPrefix(url.RequestURI(), "/tabs/")
+		{ // move to the tabs_deleted table
+			tx, err := server.db.Begin()
+			if err != nil {
+				log.Printf("Failed to create tx: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			var clientId string
+			if err := tx.QueryRow("SELECT client_id FROM tabs WHERE client_id = ?", id).Scan(&clientId); err != nil {
+				tx.Rollback()
+				if err == sql.ErrNoRows {
+					http.Error(w, "Session not found", http.StatusNotFound)
+				} else {
+					log.Printf("Error when attempting to find session: %v", err)
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+				}
+				return
+			}
+			if _, err := tx.Exec("INSERT INTO tabs_deleted (client_id, tabs) SELECT client_id, tabs FROM tabs WHERE client_id = ?", id); err != nil {
+				log.Printf("Query failed: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				tx.Rollback()
+				return
+			}
+			if _, err := tx.Exec("DELETE FROM tabs WHERE client_id = ?", id); err != nil {
+				log.Printf("Query failed: %v", err)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				tx.Rollback()
+				return
+			}
+			tx.Commit()
+		}
 	}
 }
 
@@ -91,9 +145,18 @@ func main() {
 	}
 
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tabs (
-            client_id TEXT PRIMARY KEY,
-            tabs JSON);
-            `); err != nil {
+                client_id TEXT PRIMARY KEY,
+                tabs JSON,
+                last_updated TEXT
+            );`); err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tabs_deleted (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT,
+                tabs JSON
+            );`); err != nil {
 		log.Fatal(err)
 	}
 
@@ -101,5 +164,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tabs/", server.tabsHandler)
 	mux.HandleFunc("/b/", byeHandler)
+	log.Print("Starting TabMan server")
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }

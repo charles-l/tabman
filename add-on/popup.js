@@ -18,13 +18,27 @@ async function main() {
   });
 
   const j = await response.json();
-  tabst.innerHTML = j.map((instance) =>
-    "<b>" + instance.client_id + "</b>" +
-    "<table>" + instance.tabs.map((r) =>
+  j.forEach(instance => {
+    const table = document.createElement('table');
+    table.innerHTML = instance.tabs.map((r) =>
       `<tr><td><img src="${r[0]}" width="15px"></img><a href="${r[2]}">${
         r[1]
       }</a></td></tr>`
-    ).join("") + "</table>"
-  );
+    ).join("")
+    const title = document.createElement('b');
+    title.innerText = instance.client_id;
+    tabst.appendChild(title);
+    const a = document.createElement('a');
+    a.innerText = 'delete';
+    a.href = '#';
+    a.addEventListener('click', () => {
+      fetch(`http://${serverName}/tabs/${instance.client_id}`, {
+        method: 'DELETE'
+      }).then(() => window.location.reload());
+    });
+
+    tabst.appendChild(a);
+    tabst.appendChild(table);
+  });
 }
 main();
