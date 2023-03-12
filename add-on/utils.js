@@ -17,12 +17,8 @@ if (
   { // patch storage.local.get
     const oldLocal = globalThis.browser.storage.local;
     globalThis.browser.storage.local = {
-      get: (query) => {
-        return new Promise((cont) => {
-          oldLocal.get(query, cont);
-        });
-      },
-      set: (vals) => oldLocal.set(vals),
+      get: (query) => new Promise((cont) => oldLocal.get(query, cont)),
+      set: (vals) => new Promise((cont) => oldLocal.set(vals, cont)),
     };
   }
 }
@@ -30,4 +26,15 @@ if (
 // deno-lint-ignore no-unused-vars
 function getServer() {
   return browser.storage.local.get("server").then((x) => x.server);
+}
+
+// deno-lint-ignore no-unused-vars
+async function getClientID() {
+  const q = await browser.storage.local.get("client_id");
+  if (typeof q.client_id === "undefined") {
+    const client_id = crypto.randomUUID();
+    await browser.storage.local.set({ "client_id": client_id });
+    return client_id;
+  }
+  return q.client_id;
 }

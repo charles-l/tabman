@@ -18,22 +18,22 @@ async function main() {
   });
 
   const j = await response.json();
-  j.forEach(instance => {
-    const table = document.createElement('table');
+  j.forEach((instance) => {
+    const table = document.createElement("table");
     table.innerHTML = instance.tabs.map((r) =>
       `<tr><td><img src="${r[0]}" width="15px"></img><a href="${r[2]}">${
         r[1]
       }</a></td></tr>`
-    ).join("")
-    const title = document.createElement('b');
+    ).join("");
+    const title = document.createElement("b");
     title.innerText = instance.client_id;
     tabst.appendChild(title);
-    const a = document.createElement('a');
-    a.innerText = 'delete';
-    a.href = '#';
-    a.addEventListener('click', () => {
+    const a = document.createElement("a");
+    a.innerText = "delete";
+    a.href = "#";
+    a.addEventListener("click", () => {
       fetch(`http://${serverName}/tabs/${instance.client_id}`, {
-        method: 'DELETE'
+        method: "DELETE",
       }).then(() => window.location.reload());
     });
 
