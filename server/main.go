@@ -100,12 +100,8 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func byeHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Bye..."))
-}
-
 func main() {
-	const file string = "tabs.db"
+	const file string = "tabman.db"
 	db, err := sql.Open("sqlite3", file)
 	if err != nil {
 		log.Fatal(err)
