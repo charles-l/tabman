@@ -23,7 +23,10 @@ function postTabs() {
           method: "POST",
           headers: { "Content-Type": "application/json", },
           body: JSON.stringify(tabsJson)
-        })
+        }).catch(err => {
+          // TODO: put this in the popup
+          console.error(`Failed to post tabs ${err}`);
+        });
       } else {
         console.log("server is undefined, skipping post");
       }

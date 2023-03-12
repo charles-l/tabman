@@ -1,11 +1,11 @@
 function saveOptions() {
     var serverInput = document.querySelector('#server');
-    browser.storage.sync.set({
+    browser.storage.local.set({
         server: serverInput.value
     })
 }
 
-document.querySelector('#server').addEventListener('change', () => saveOptions());
+document.querySelector('#save').addEventListener('click', () => saveOptions());
 document.addEventListener('DOMContentLoaded', () => {
-    getServer().then((s) => if(s !== undefined){document.querySelector('#server').value = s});
+    getServer().then((s) => {if(s !== undefined){document.querySelector('#server').value = s}});
 });
