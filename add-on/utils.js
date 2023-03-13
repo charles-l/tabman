@@ -1,7 +1,8 @@
 // polyfill
 if (
-  typeof globalThis.browser === "undefined" ||
-  Object.getPrototypeOf(globalThis.browser) !== Object.prototype
+  typeof globalThis.chrome !== "undefined" &&
+  (typeof globalThis.browser === "undefined" ||
+    Object.getPrototypeOf(globalThis.browser) !== Object.prototype)
 ) {
   // chrome
   globalThis.browser = globalThis.chrome;
@@ -23,13 +24,11 @@ if (
   }
 }
 
-// deno-lint-ignore no-unused-vars
-function getServer() {
+export function getServer() {
   return browser.storage.local.get("server").then((x) => x.server);
 }
 
-// deno-lint-ignore no-unused-vars
-async function getClientID() {
+export async function getClientID() {
   const q = await browser.storage.local.get("client_id");
   if (typeof q.client_id === "undefined") {
     const client_id = crypto.randomUUID();
@@ -37,4 +36,27 @@ async function getClientID() {
     return client_id;
   }
   return q.client_id;
+}
+
+export function humanTimeDiff(seconds) {
+  const secInMin = 60;
+  const minInHour = 60;
+  const hourInDay = 24;
+  let val = seconds;
+  let label = "second";
+  if (seconds >= secInMin * minInHour * hourInDay) {
+    val = Math.floor(seconds / (secInMin * minInHour * hourInDay));
+    label = "day";
+  } else if (seconds >= secInMin * minInHour) {
+    val = Math.floor(seconds / (secInMin * minInHour));
+    label = "hour";
+  } else if (seconds >= secInMin) {
+    val = Math.floor(seconds / secInMin);
+    label = "minute";
+  }
+  if (val == 1) {
+    return `${val} ${label}`;
+  } else {
+    return `${val} ${label}s`;
+  }
 }

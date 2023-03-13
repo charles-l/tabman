@@ -1,3 +1,5 @@
+import { getClientID, getServer } from "./utils.js";
+
 const favIconCache = {};
 
 function blobToBase64(blob) {

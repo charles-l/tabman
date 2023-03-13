@@ -1,3 +1,4 @@
+import { getServer } from "./utils.js";
 function saveOptions() {
   const serverInput = document.querySelector("#server");
   browser.storage.local.set({

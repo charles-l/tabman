@@ -17,8 +17,9 @@ type TabsServer struct {
 }
 
 type Tabs struct {
-	ClientId string      `json:"client_id"`
-	Tabs     [][3]string `json:"tabs"`
+	ClientId    string      `json:"client_id"`
+	Tabs        [][3]string `json:"tabs"`
+	LastUpdated time.Time   `json:"last_updated"`
 }
 
 func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +51,7 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 			`INSERT OR REPLACE INTO tabs (client_id, tabs, last_updated) values (?, ?, ?)`,
 			tabs.ClientId,
 			j,
-			time.Now(),
+			time.Now().Format(time.RFC3339),
 		); err != nil {
 			log.Printf("Failed to insert into tabs: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -58,7 +59,7 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if r.Method == http.MethodGet {
 		// active sessions
-		rows, err := server.db.Query(`SELECT client_id, tabs FROM tabs`)
+		rows, err := server.db.Query(`SELECT client_id, tabs, last_updated FROM tabs`)
 		if err != nil {
 			log.Printf("Failed to query tabs table: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -70,7 +71,8 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var clientId string
 			var tabsStr string
-			if err := rows.Scan(&clientId, &tabsStr); err != nil {
+			var lastUpdatedStr string
+			if err := rows.Scan(&clientId, &tabsStr, &lastUpdatedStr); err != nil {
 				log.Printf("failed to scan rows: %v", err)
 				http.Error(w, "Internal error", http.StatusInternalServerError)
 				return
@@ -84,7 +86,13 @@ func (server *TabsServer) tabsHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Internal error", http.StatusInternalServerError)
 				return
 			}
-			allTabs = append(allTabs, Tabs{clientId, tabsArr})
+
+			lastUpdated, err := time.Parse(time.RFC3339, lastUpdatedStr)
+			if err != nil {
+				log.Printf("Failed to parse date in db: %v", lastUpdatedStr)
+				lastUpdated = time.Now()
+			}
+			allTabs = append(allTabs, Tabs{clientId, tabsArr, lastUpdated})
 		}
 
 		j, err := json.Marshal(allTabs)

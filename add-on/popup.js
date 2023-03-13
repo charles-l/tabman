@@ -1,3 +1,4 @@
+import { getServer, humanTimeDiff } from "./utils.js";
 const tabst = document.getElementById("tabs");
 document.getElementById("settings").addEventListener(
   "click",
@@ -26,7 +27,11 @@ async function main() {
       }</a></td></tr>`
     ).join("");
     const title = document.createElement("b");
-    title.innerText = instance.client_id;
+    const date = Date.parse(instance.last_updated);
+    const diffSeconds = Math.floor((Date.now() - date) / 1000);
+    title.innerText = `${instance.client_id} (last updated ${
+      humanTimeDiff(diffSeconds)
+    } ago)`;
     tabst.appendChild(title);
     const a = document.createElement("a");
     a.innerText = "delete";
