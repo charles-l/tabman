@@ -31,6 +31,9 @@ jobs:
         with:
           deno-version: v1.x
 
+      - name: Run tests
+        run: deno test
+
       - name: Verify formatting
         run: deno fmt --check
 
