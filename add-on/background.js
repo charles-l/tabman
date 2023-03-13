@@ -10,7 +10,10 @@ function blobToBase64(blob) {
   });
 }
 
-function postTabs() {
+function postTabs(_tabId, changeInfo, _tab) {
+  if (changeInfo.status !== "complete") {
+    return;
+  }
   browser.tabs.query({}).then((tabs) => {
     getClientID().then((client_id) => {
       // cache any icons that changed
